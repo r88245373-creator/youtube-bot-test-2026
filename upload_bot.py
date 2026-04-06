@@ -5,6 +5,7 @@ from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
 from google.auth.transport.requests import Request
+from googleapiclient.errors import HttpError
 
 # ==============================
 # إعدادات البوت
@@ -12,60 +13,88 @@ from google.auth.transport.requests import Request
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 VIDEOS_FOLDER = "videos"
 
-# ==============================
-# قراءة token.json من GitHub Secrets
-# يجب تعيين Secret باسم TOKEN_JSON
-# ==============================
-token_json_str = os.environ.get("TOKEN_JSON")
-if not token_json_str:
-    raise ValueError("TOKEN_JSON Secret not found! يجب إنشاءه على GitHub Secrets")
+def get_authenticated_service():
+    token_json_str = os.environ.get("TOKEN_JSON")
+    if not token_json_str:
+        raise ValueError("❌ خطأ: TOKEN_JSON غير موجود في GitHub Secrets!")
 
-creds_data = json.loads(token_json_str)
-creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
+    creds_data = json.loads(token_json_str)
+    creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
 
-# تجديد صلاحية التوكن إذا انتهت
-if creds.expired and creds.refresh_token:
-    creds.refresh(Request())
+    # التحقق من صلاحية التوكن وتجديده آلياً
+    if creds and creds.expired and creds.refresh_token:
+        print("🔄 التوكن منتهي الصلاحية، يتم التجديد الآن...")
+        creds.refresh(Request())
+        # ملاحظة: في GitHub Actions، التوكن المتجدد لن يحفظ تلقائياً في السيكريتس
+        # لكنه سيعمل خلال جلسة التشغيل الحالية.
+    
+    return build("youtube", "v3", credentials=creds)
 
-youtube = build("youtube", "v3", credentials=creds)
+def upload_video(youtube, file_path):
+    try:
+        file_name = os.path.basename(file_path)
+        x = random.randint(1000, 9999)
+        title = f"قصص من المصفوفة السرية ♾️ #Shorts {x}"
 
-# ==============================
-# رفع فيديو وحذفه بعد الرفع
-# ==============================
-def upload_video(file_path):
-    x = random.randint(100, 1000)
-    title = f"قصص من المصفوفة السرية ♾️ - القصة {x}"
+        print(f"🚀 جاري رفع: {file_name}...")
 
-    request = youtube.videos().insert(
-        part="snippet,status",
-        body={
+        request_body = {
             "snippet": {
                 "title": title,
-                "description": "test",
-                "tags": ["test"],
-                "categoryId": "24",  # Entertainment
+                "description": "#shorts #mystery #test",
+                "tags": ["shorts", "mystery"],
+                "categoryId": "24",
                 "defaultLanguage": "ar",
-                "defaultAudioLanguage": "ar",
-                "recordingDetails": {"locationDescription": "Morocco"}
+                "defaultAudioLanguage": "ar"
             },
             "status": {
-                "privacyStatus": "public",
-                "selfDeclaredMadeForKids": False,
-                "madeForKids": False,
-                "embeddable": True,
-                "license": "youtube"
+                "privacyStatus": "public",  # يمكنك تغييرها لـ private للتجربة
+                "selfDeclaredMadeForKids": False
             }
-        },
-        media_body=MediaFileUpload(file_path)
-    )
-    response = request.execute()
-    print(f"تم رفع الفيديو: {response['id']}")
+        }
 
-    # حذف الفيديو بعد رفعه
-    os.remove(file_path)
-    print(f"تم حذف الفيديو المحلي: {file_path}")
+        media = MediaFileUpload(
+            file_path, 
+            mimetype="video/*", 
+            resumable=True
+        )
 
-# رفع كل الفيديوهات الموجودة في المجلد
-for video_file in os.listdir(VIDEOS_FOLDER):
-    if video_file.endswith((".mp4", ".mov", ".mkv")):
-        upload_video(os.path.join(VIDEOS_FOLDER, video_file))
+        request = youtube.videos().insert(
+            part="snippet,status",
+            body=request_body,
+            media_body=media
+        )
+
+        # نظام الرفع مع إظهار التقدم (اختياري)
+        response = None
+        while response is None:
+            status, response = request.next_chunk()
+            if status:
+                print(f"📦 تم رفع {int(status.progress() * 100)}%...")
+
+        print(f"✅ تم الرفع بنجاح! ID الفيديو: {response['id']}")
+        
+        # حذف الملف بعد التأكد من الرفع
+        os.remove(file_path)
+        print(f"🗑️ تم حذف الملف المحلي: {file_name}")
+
+    except HttpError as e:
+        print(f"❌ حدث خطأ في اليوتيوب API: {e}")
+    except Exception as e:
+        print(f"⚠️ حدث خطأ غير متوقع: {e}")
+
+if __name__ == "__main__":
+    # التأكد من وجود المجلد
+    if not os.path.exists(VIDEOS_FOLDER):
+        print(f"📁 المجلد '{VIDEOS_FOLDER}' غير موجود، يتم إنشاؤه الآن...")
+        os.makedirs(VIDEOS_FOLDER)
+
+    youtube_service = get_authenticated_service()
+    
+    video_files = [f for f in os.listdir(VIDEOS_FOLDER) if f.endswith((".mp4", ".mov", ".mkv"))]
+    
+    if not video_files:
+        print("ℹ️ لا توجد فيديوهات للرفع في المجلد.")
+    else:
+        for video_file in video_files:
+            upload_video(youtube_service, os.path.join(VIDEOS_FOLDER, video_file))
