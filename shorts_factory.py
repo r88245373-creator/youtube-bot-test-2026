@@ -103,16 +103,12 @@ class VideoGenerator:
         Path(self.config.videos_folder).mkdir(exist_ok=True)  # Create videos folder
         
         # Update output path to be inside videos folder
-        self.config.output_video_path = str(Path(self.config.videos_folder) / self.config.output_video_path)
+        self.config.output_video_path = str(Path(self.config.videos_folder) / Path(self.config.output_video_path).name)
         
     @lru_cache(maxsize=128)
     def _get_font(self, size: int) -> ImageFont.FreeTypeFont:
-        """Cached font loading for better performance"""
-        try:
-            return ImageFont.truetype(self.config.font_path, size)
-        except OSError:
-            logger.warning(f"Font {self.config.font_path} not found, using default")
-            return ImageFont.load_default()
+        """Cached font loading. No fallback to default to ensure size consistency."""
+        return ImageFont.truetype(self.config.font_path, size)
     
     @staticmethod
     def fix_arabic(text: str) -> str:
@@ -279,6 +275,8 @@ class VideoGenerator:
         
         # Prepare text lines
         sentences = [s.strip() for s in text.split("\n") if s.strip()]
+        
+        # This will now raise an error if the font is missing, which is what we want.
         font = self._get_font(self.config.font_size)
         
         # Wrap text lines
@@ -412,8 +410,9 @@ def main():
         
         # Validate critical files
         if not Path(config.font_path).exists():
-            logger.warning(f"Font file not found: {config.font_path}")
-        
+            logger.error(f"CRITICAL ERROR: Font file not found at {config.font_path}. Script will not run.")
+            return
+
         # Create generator and run
         generator = VideoGenerator(config)
         result = generator.run()
