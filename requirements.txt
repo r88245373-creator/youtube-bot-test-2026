@@ -1,14 +1,13 @@
-# Core setuptools - THIS ORDER MATTERS
+# الأساسيات - الترتيب مهم جداً
 setuptools==69.5.1
 wheel==0.43.0
 
-# Google API
-google-api-python-client==2.129.0
-google-auth==2.29.0
-google-auth-httplib2==0.2.0
-google-auth-oauthlib==1.2.0
+# المكتبات العربية (قلب الحل)
+arabic-reshaper==3.0.0
+python-bidi==0.4.2
+fonttools==4.50.0
 
-# Video Processing
+# معالجة الصور والفيديو
 opencv-python==4.9.0.80
 numpy==1.26.4
 Pillow==10.3.0
@@ -16,9 +15,12 @@ moviepy==1.0.3
 imageio==2.34.1
 imageio-ffmpeg==0.4.9
 
-# Arabic Text Processing
-arabic-reshaper==3.0.0
-python-bidi==0.4.2
+# مكتبات جوجل واليوتيوب
+google-api-python-client==2.129.0
+google-auth==2.29.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.0
 
-# Utilities
+# أدوات مساعدة
 tqdm==4.66.2
+requests==2.31.0
