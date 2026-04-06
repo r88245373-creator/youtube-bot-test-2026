@@ -1,52 +1,31 @@
 import os
 import random
+import json
 from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
-import json
+from google.auth.transport.requests import Request
 
 # ==============================
 # إعدادات البوت
 # ==============================
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 VIDEOS_FOLDER = "videos"
-TOKEN_FILE = "token.json"
 
 # ==============================
-# قراءة بيانات العميل من البيئة (GitHub Secrets)
-# يجب تعيين GitHub Secrets: CLIENT_ID و CLIENT_SECRET
+# قراءة token.json من GitHub Secrets
+# يجب تعيين Secret باسم TOKEN_JSON
 # ==============================
-CLIENT_ID = os.environ.get("CLIENT_ID")
-CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
+token_json_str = os.environ.get("TOKEN_JSON")
+if not token_json_str:
+    raise ValueError("TOKEN_JSON Secret not found! يجب إنشاءه على GitHub Secrets")
 
-CLIENT_CONFIG = {
-    "installed": {
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "redirect_uris": ["urn:ietf:wg:oauth:2.0:oob","http://localhost"],
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token"
-    }
-}
+creds_data = json.loads(token_json_str)
+creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
 
-# ==============================
-# تحميل أو إنشاء بيانات الاعتماد
-# ==============================
-creds = None
-if os.path.exists(TOKEN_FILE):
-    creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-
-if not creds or not creds.valid:
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-    else:
-        flow = InstalledAppFlow.from_client_config(CLIENT_CONFIG, SCOPES)
-        creds = flow.run_console()
-    # حفظ token.json
-    with open(TOKEN_FILE, "w") as token:
-        token.write(creds.to_json())
+# تجديد صلاحية التوكن إذا انتهت
+if creds.expired and creds.refresh_token:
+    creds.refresh(Request())
 
 youtube = build("youtube", "v3", credentials=creds)
 
