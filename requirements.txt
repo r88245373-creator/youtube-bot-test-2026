@@ -1,6 +1,6 @@
-# Core dependencies first (setuptools is critical!)
-setuptools>=65.0.0
-wheel>=0.40.0
+# Critical: Use compatible setuptools version
+setuptools==69.5.1
+wheel==0.43.0
 
 # Google API
 google-api-python-client==2.129.0
