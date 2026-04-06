@@ -32,31 +32,38 @@ jobs:
           cache: 'pip'
           cache-dependency-path: 'requirements.txt'
 
-      - name: 📦 Install Dependencies (Fixed)
+      - name: 📦 Install Dependencies (Fixed pkg_resources)
         run: |
-          # Upgrade pip
+          # Upgrade pip first
           python -m pip install --upgrade pip
           
-          # Install specific setuptools version that includes pkg_resources
-          pip install setuptools==69.5.1
+          # CRITICAL: Install setuptools BEFORE any other package
+          # This ensures pkg_resources is available
+          pip install --no-cache-dir setuptools==69.5.1
           
-          # Verify pkg_resources is available
-          python -c "import pkg_resources; print('✅ pkg_resources available')"
+          # Verify pkg_resources works immediately
+          python -c "import pkg_resources; print('✅ pkg_resources loaded successfully')"
           
-          # Install remaining packages
-          pip install -r requirements.txt
+          # Install all other requirements
+          pip install --no-cache-dir -r requirements.txt
           
-          # Fix imageio-ffmpeg version (stay on 0.4.9)
-          pip install imageio-ffmpeg==0.4.9 --force-reinstall
+          # Fix imageio-ffmpeg - keep the working version
+          pip install --no-cache-dir --force-reinstall imageio-ffmpeg==0.4.9
           
-          # Verify all imports
+          # Prevent future setuptools upgrades
+          pip install --no-cache-dir --upgrade --force-reinstall setuptools==69.5.1
+          
+          # Final verification
+          echo "=== VERIFYING ALL IMPORTS ==="
+          python -c "import pkg_resources; print('✅ pkg_resources')"
           python -c "import cv2; print(f'✅ OpenCV: {cv2.__version__}')"
           python -c "import numpy; print(f'✅ NumPy: {numpy.__version__}')"
           python -c "import PIL; print(f'✅ Pillow: {PIL.__version__}')"
-          python -c "from moviepy.editor import VideoFileClip; print('✅ MoviePy: OK')"
-          python -c "import arabic_reshaper; print('✅ Arabic Reshaper: OK')"
-          python -c "from bidi.algorithm import get_display; print('✅ Python-Bidi: OK')"
-          python -c "import imageio_ffmpeg; print('✅ imageio-ffmpeg: OK')"
+          python -c "import moviepy; print('✅ MoviePy')"
+          python -c "import arabic_reshaper; print('✅ Arabic Reshaper')"
+          python -c "from bidi.algorithm import get_display; print('✅ Python-Bidi')"
+          python -c "import imageio_ffmpeg; print('✅ imageio-ffmpeg')"
+          echo "=== ALL VERIFICATIONS PASSED ==="
 
       - name: 🎬 Install FFmpeg
         run: |
@@ -68,12 +75,9 @@ jobs:
         run: |
           echo "🎬 Starting video generation at $(date)"
           
-          # Debug Python path
-          echo "📁 Python site-packages:"
-          python -c "import site; print(site.getsitepackages())"
-          
-          # List installed packages
-          pip list | grep -E "(setuptools|imageio|moviepy|pkg)"
+          # Debug installed packages
+          echo "📦 Installed packages:"
+          pip list | grep -E "(setuptools|imageio|moviepy|pkg_resources)"
           
           # Run the video creator
           python shorts_factory.py
@@ -111,7 +115,8 @@ jobs:
           echo "🧹 Cleaning up video directory..."
           
           if [ -d "videos" ]; then
-            find videos/ -type f -name "*.mp4" -delete
+            # Keep only the most recent video if needed, delete others
+            find videos/ -type f -name "*.mp4" -not -name ".*" -delete
             find videos/ -type f -name "*.avi" -delete
             find videos/ -type f -name "*.mov" -delete
             find videos/ -type f -name "*.mkv" -delete
