@@ -25,19 +25,7 @@ jobs:
           pip install --upgrade pip
           pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
-      # 4️⃣ إضافة تأخير عشوائي قبل تشغيل البوت
-      - name: تأخير عشوائي قبل التشغيل
-        run: |
-          echo "سيتم الانتظار مدة عشوائية قبل رفع الفيديو..."
-          # التأخير عشوائي بين -5 و +25 دقيقة
-          DELAY=$(( (RANDOM % 31) - 5 ))
-          if [ $DELAY -lt 0 ]; then
-            echo "تأخير $DELAY دقائق: سيتم التشغيل قبل الموعد"
-            sleep $((DELAY * -60))  # تحويل دقائق لثواني
-          else
-            echo "تأخير $DELAY دقائق: سيتم الانتظار"
-            sleep $((DELAY * 60))
-          fi
+   
 
       - name: تشغيل بوت رفع الفيديوهات
         run: |
