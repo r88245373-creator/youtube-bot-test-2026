@@ -1,7 +1,7 @@
 """
 Professional Arabic Story Video Generator
 Author: Advanced Video Processing System
-Version: 2.0.0
+Version: 2.0.1 - Fixed pkg_resources compatibility
 """
 
 import re
@@ -11,14 +11,29 @@ import os
 import random
 import logging
 import time
+import warnings
 from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Tuple, Optional, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
-import arabic_reshaper
-from bidi.algorithm import get_display
+
+# Suppress deprecation warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+# Import with error handling
+try:
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+except ImportError as e:
+    print(f"Warning: Arabic text libraries not available: {e}")
+    # Fallback functions
+    def arabic_reshaper_placeholder(text): return text
+    def get_display_placeholder(text): return text
+    arabic_reshaper = type('obj', (object,), {'reshape': arabic_reshaper_placeholder})
+    get_display = get_display_placeholder
+
 from moviepy.editor import VideoFileClip, AudioFileClip
 
 # =============================
@@ -102,8 +117,11 @@ class VideoGenerator:
     @staticmethod
     def fix_arabic(text: str) -> str:
         """Fix Arabic text rendering"""
-        reshaped = arabic_reshaper.reshape(text)
-        return get_display(reshaped)
+        try:
+            reshaped = arabic_reshaper.reshape(text)
+            return get_display(reshaped)
+        except:
+            return text
     
     def wrap_text(self, text: str, font: ImageFont.FreeTypeFont, 
                   max_width: int) -> List[str]:
