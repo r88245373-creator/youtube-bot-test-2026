@@ -1,4 +1,4 @@
-# Critical: Use compatible setuptools version
+# Core setuptools - THIS ORDER MATTERS
 setuptools==69.5.1
 wheel==0.43.0
 
