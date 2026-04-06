@@ -1,7 +1,7 @@
 """
 Professional Arabic Story Video Generator
 Author: Advanced Video Processing System
-Version: 2.1.0 - Fixed Arabic Rendering Logic
+Version: 2.2.0 - Final Arabic Fix (No Disconnected Letters)
 """
 
 import re
@@ -63,7 +63,7 @@ class VideoConfig:
     flicker_range: Tuple[float, float] = (0.92, 1.08)
     vignette_intensity: float = 0.3
     backgrounds_folder: str = "backgrounds"
-    font_path: str = "Andalus.ttf"
+    font_path: str = "Andalus.ttf"  # تأكد من مطابقة اسم الملف لديك
     output_video_path: str = "story_video_smooth.mp4"
     music_folder: str = "music"
     stories_file: str = "stories.txt"
@@ -95,28 +95,30 @@ class VideoGenerator:
     
     @staticmethod
     def fix_arabic(text: str) -> str:
-        """Fix Arabic text rendering with enhanced reshaping logic"""
+        """إصلاح النص العربي: ربط الحروف وتعديل الاتجاه من اليمين لليسار"""
         try:
-            # Reshaping is crucial for joining letters correctly
+            if not text.strip():
+                return text
+            # ربط الحروف (Reshaping)
             reshaped_text = arabic_reshaper.reshape(text)
-            # bidi algorithm is crucial for correct character order (RTL)
+            # تصحيح الاتجاه (BiDi)
             return get_display(reshaped_text)
         except Exception:
             return text
     
     def wrap_text(self, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> List[str]:
-        """Wrap text with correct Arabic width calculation"""
+        """تقسيم النص لأسطر مع قياس دقيق لعرض الحروف العربية المتصلة"""
         words = text.split()
         lines = []
         current_line = []
         
         for word in words:
             test_line = ' '.join(current_line + [word])
-            # We MUST fix the Arabic before calculating the bounding box
-            fixed_test_line = self.fix_arabic(test_line)
-            bbox = ImageDraw.Draw(Image.new('RGB', (1, 1))).textbbox(
-                (0, 0), fixed_test_line, font=font
-            )
+            # يجب قياس عرض النص "بعد" إصلاحه ليطابق الواقع في الصورة
+            fixed_test = self.fix_arabic(test_line)
+            
+            draw_temp = ImageDraw.Draw(Image.new('RGB', (1, 1)))
+            bbox = draw_temp.textbbox((0, 0), fixed_test, font=font)
             width = bbox[2] - bbox[0]
             
             if width <= max_width:
@@ -194,14 +196,13 @@ class VideoGenerator:
     
     def create_video(self, text: str) -> str:
         logger.info("Starting video creation...")
-        start_time = time.time()
         sentences = [s.strip() for s in text.split("\n") if s.strip()]
         font = self._get_font(self.config.font_size)
         
         all_lines = []
         for sentence in sentences:
             wrapped = self.wrap_text(sentence, font, self.config.max_text_width)
-            # Store the final fixed Arabic line for rendering
+            # تخزين الأسطر جاهزة للعرض النهائي
             all_lines.extend([self.fix_arabic(line) for line in wrapped])
         
         if not all_lines: return ""
@@ -231,6 +232,7 @@ class VideoGenerator:
                 bbox = draw.textbbox((0, 0), line_text, font=font)
                 text_width = bbox[2] - bbox[0]
                 x_pos = (self.config.img_width - text_width) // 2
+                # رسم النص مع حدود سوداء لزيادة الوضوح
                 draw.text((x_pos, y_pos), line_text, font=font, fill="white", stroke_width=3, stroke_fill="black")
             
             frame = self.apply_effects(frame)
@@ -255,9 +257,9 @@ def main():
             return
         generator = VideoGenerator(config)
         result = generator.run()
-        if result: logger.info(f"✅ Success: {result}")
+        if result: logger.info(f"🎬 Done: {result}")
     except Exception as e:
-        logger.error(f"❌ Error: {e}", exc_info=True)
+        logger.error(f"❌ Unexpected Error: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()
