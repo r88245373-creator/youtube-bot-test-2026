@@ -34,21 +34,21 @@ def upload_video(youtube, file_path):
     try:
         file_name = os.path.basename(file_path)
         x = random.randint(1000, 9999)
-        title = f"قصص من المصفوفة السرية ♾️ #Shorts {x}"
+        title = f"قصص من المصفوفة السرية ♾️ - القصة  {x}"
 
         print(f"🚀 جاري رفع: {file_name}...")
 
         request_body = {
             "snippet": {
                 "title": title,
-                "description": "#shorts #mystery #test",
-                "tags": ["shorts", "mystery"],
+                "description": "#shorts #mystery #secrets",
+                "tags": ["shorts", "mystery", "horror", "غموض", "رعب", "قصص_واقعية", "حقائق_مرعبة", "أسرار", "جريمة", "لغز", "وثائقي", "صادم", "ملفات_سرية", "أحداث_حقيقية", "أغرب_حقائق_التاريخ", "جرائم_بشعة", "ظواهر_غريبة", "أسرار_مظلمة", "تحقيقات_غامضة", "قصص_رعب_نفسي"],
                 "categoryId": "24",
                 "defaultLanguage": "ar",
                 "defaultAudioLanguage": "ar"
             },
             "status": {
-                "privacyStatus": "public",  # يمكنك تغييرها لـ private للتجربة
+                "privacyStatus": "public",  
                 "selfDeclaredMadeForKids": False
             }
         }
