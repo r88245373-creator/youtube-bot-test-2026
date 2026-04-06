@@ -57,24 +57,7 @@ jobs:
           python -c "import googleapiclient; print(f'✅ Google API Client: OK')"
 
       # ============================================
-      # 4. RANDOM DELAY (5-20 minutes for natural behavior)
-      # ============================================
-      - name: ⏱️ Apply Random Delay
-        run: |
-          # Random delay between 5-20 minutes
-          DELAY=$(( (RANDOM % 16) + 5 ))
-          echo "🕒 Waiting for $DELAY minutes to simulate natural behavior..."
-          
-          # Show countdown
-          for i in $(seq $((DELAY * 60)) -1 1); do
-            if [ $((i % 30)) -eq 0 ]; then
-              echo "   ⏳ $((i / 60)) minutes remaining..."
-            fi
-            sleep 1
-          done
-          echo "✅ Random delay completed"
-
-      # ============================================
+     
       # 5. CREATE VIDEO (Run shorts factory)
       # ============================================
       - name: 🎬 Generate Shorts Video
