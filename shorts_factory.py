@@ -1,7 +1,7 @@
 """
 Professional Arabic Story Video Generator
 Author: Advanced Video Processing System
-Version: 2.2.1 - Debug Mode (No Try/Except for Arabic Libs)
+Version: 2.2.0 - Final Arabic Fix (No Disconnected Letters)
 """
 
 import re
@@ -19,14 +19,21 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-# استيراد مباشر بدون try-except لإيقاف الكود في حال عدم التثبيت
-import arabic_reshaper
-from bidi.algorithm import get_display
-
-from moviepy.editor import VideoFileClip, AudioFileClip
-
 # Suppress deprecation warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+# Import with error handling
+try:
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+except ImportError as e:
+    print(f"Warning: Arabic text libraries not available: {e}")
+    def arabic_reshaper_placeholder(text): return text
+    def get_display_placeholder(text): return text
+    arabic_reshaper = type('obj', (object,), {'reshape': arabic_reshaper_placeholder})
+    get_display = get_display_placeholder
+
+from moviepy.editor import VideoFileClip, AudioFileClip
 
 # =============================
 # LOGGING CONFIGURATION
@@ -56,7 +63,7 @@ class VideoConfig:
     flicker_range: Tuple[float, float] = (0.92, 1.08)
     vignette_intensity: float = 0.3
     backgrounds_folder: str = "backgrounds"
-    font_path: str = "Andalus.ttf" 
+    font_path: str = "Andalus.ttf"  # تأكد من مطابقة اسم الملف لديك
     output_video_path: str = "story_video_smooth.mp4"
     music_folder: str = "music"
     stories_file: str = "stories.txt"
@@ -92,18 +99,22 @@ class VideoGenerator:
         try:
             if not text.strip():
                 return text
+            # ربط الحروف (Reshaping)
             reshaped_text = arabic_reshaper.reshape(text)
+            # تصحيح الاتجاه (BiDi)
             return get_display(reshaped_text)
         except Exception:
             return text
     
     def wrap_text(self, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> List[str]:
+        """تقسيم النص لأسطر مع قياس دقيق لعرض الحروف العربية المتصلة"""
         words = text.split()
         lines = []
         current_line = []
         
         for word in words:
             test_line = ' '.join(current_line + [word])
+            # يجب قياس عرض النص "بعد" إصلاحه ليطابق الواقع في الصورة
             fixed_test = self.fix_arabic(test_line)
             
             draw_temp = ImageDraw.Draw(Image.new('RGB', (1, 1)))
@@ -191,6 +202,7 @@ class VideoGenerator:
         all_lines = []
         for sentence in sentences:
             wrapped = self.wrap_text(sentence, font, self.config.max_text_width)
+            # تخزين الأسطر جاهزة للعرض النهائي
             all_lines.extend([self.fix_arabic(line) for line in wrapped])
         
         if not all_lines: return ""
@@ -220,6 +232,7 @@ class VideoGenerator:
                 bbox = draw.textbbox((0, 0), line_text, font=font)
                 text_width = bbox[2] - bbox[0]
                 x_pos = (self.config.img_width - text_width) // 2
+                # رسم النص مع حدود سوداء لزيادة الوضوح
                 draw.text((x_pos, y_pos), line_text, font=font, fill="white", stroke_width=3, stroke_fill="black")
             
             frame = self.apply_effects(frame)
