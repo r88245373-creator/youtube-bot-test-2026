@@ -20,17 +20,11 @@ jobs:
       PYTHONUNBUFFERED: 1
 
     steps:
-      # ============================================
-      # 1. CHECKOUT CODE
-      # ============================================
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      # ============================================
-      # 2. SETUP PYTHON ENVIRONMENT
-      # ============================================
       - name: 🐍 Setup Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -38,63 +32,48 @@ jobs:
           cache: 'pip'
           cache-dependency-path: 'requirements.txt'
 
-      # ============================================
-      # 3. INSTALL DEPENDENCIES (Fixed)
-      # ============================================
-      - name: 📦 Install Dependencies
+      - name: 📦 Install Dependencies (Fixed)
         run: |
-          # Upgrade pip and install setuptools first (critical for pkg_resources)
-          python -m pip install --upgrade pip setuptools wheel
+          # Upgrade pip
+          python -m pip install --upgrade pip
           
-          # Install all requirements
+          # Install specific setuptools version that includes pkg_resources
+          pip install setuptools==69.5.1
+          
+          # Verify pkg_resources is available
+          python -c "import pkg_resources; print('✅ pkg_resources available')"
+          
+          # Install remaining packages
           pip install -r requirements.txt
           
-          # Force reinstall imageio-ffmpeg with dependencies
-          pip install --upgrade --force-reinstall imageio-ffmpeg
+          # Fix imageio-ffmpeg version (stay on 0.4.9)
+          pip install imageio-ffmpeg==0.4.9 --force-reinstall
           
-          # Verify critical imports
-          python -c "import pkg_resources; print('✅ pkg_resources available')"
+          # Verify all imports
           python -c "import cv2; print(f'✅ OpenCV: {cv2.__version__}')"
           python -c "import numpy; print(f'✅ NumPy: {numpy.__version__}')"
           python -c "import PIL; print(f'✅ Pillow: {PIL.__version__}')"
-          python -c "from moviepy.editor import VideoFileClip; print(f'✅ MoviePy: OK')"
+          python -c "from moviepy.editor import VideoFileClip; print('✅ MoviePy: OK')"
           python -c "import arabic_reshaper; print('✅ Arabic Reshaper: OK')"
           python -c "from bidi.algorithm import get_display; print('✅ Python-Bidi: OK')"
+          python -c "import imageio_ffmpeg; print('✅ imageio-ffmpeg: OK')"
 
-      # ============================================
-      # 4. INSTALL FFMPEG (Required for moviepy)
-      # ============================================
       - name: 🎬 Install FFmpeg
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           ffmpeg -version | head -n 1
 
-      # ============================================
-      # 6. CREATE VIDEO
-      # ============================================
       - name: 🎬 Generate Shorts Video
         run: |
           echo "🎬 Starting video generation at $(date)"
           
-          # Debug: Show current directory structure
-          echo "📁 Current directory structure:"
-          ls -la
+          # Debug Python path
+          echo "📁 Python site-packages:"
+          python -c "import site; print(site.getsitepackages())"
           
-          # Check required files
-          if [ ! -f "shorts_factory.py" ]; then
-            echo "❌ shorts_factory.py not found!"
-            exit 1
-          fi
-          
-          if [ ! -f "stories.txt" ]; then
-            echo "❌ stories.txt not found!"
-            exit 1
-          fi
-          
-          if [ ! -f "andalus.ttf" ]; then
-            echo "⚠️ Warning: andalus.ttf not found, using default font"
-          fi
+          # List installed packages
+          pip list | grep -E "(setuptools|imageio|moviepy|pkg)"
           
           # Run the video creator
           python shorts_factory.py
@@ -104,13 +83,10 @@ jobs:
             echo "📁 Generated videos:"
             ls -lah videos/ || echo "No videos found"
           else
-            echo "❌ Video generation failed with exit code $?"
+            echo "❌ Video generation failed"
             exit 1
           fi
 
-      # ============================================
-      # 7. UPLOAD TO YOUTUBE
-      # ============================================
       - name: 🚀 Upload to YouTube Shorts
         env:
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
@@ -129,9 +105,6 @@ jobs:
             exit 1
           fi
 
-      # ============================================
-      # 8. CLEANUP
-      # ============================================
       - name: 🧹 Cleanup Video Directory
         if: always()
         run: |
@@ -148,23 +121,13 @@ jobs:
             echo "⚠️ Videos directory not found"
           fi
 
-      # ============================================
-      # 9. SUCCESS NOTIFICATION
-      # ============================================
       - name: ✅ Success Notification
         if: success()
         run: |
           echo "🎉 Workflow completed successfully at $(date)"
-          echo "📊 Workflow URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-      # ============================================
-      # 10. FAILURE NOTIFICATION
-      # ============================================
       - name: 📧 Failure Notification
         if: failure()
         run: |
           echo "❌ Workflow failed at $(date)"
-          echo "🔧 Workflow ID: ${{ github.run_id }}"
-          echo "📝 Repository: ${{ github.repository }}"
-          echo "🌿 Branch: ${{ github.ref_name }}"
           echo "📊 Logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
