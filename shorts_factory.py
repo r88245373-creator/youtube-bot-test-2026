@@ -74,7 +74,7 @@ class VideoConfig:
     
     # File paths
     backgrounds_folder: str = "backgrounds"
-    font_path: str = "andalus.ttf"
+    font_path: str = "Andalus.ttf"
     output_video_path: str = "story_video_smooth.mp4"
     music_folder: str = "music"
     stories_file: str = "stories.txt"
