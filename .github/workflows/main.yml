@@ -1,0 +1,44 @@
+name: رفع فيديوهات YouTube Shorts تلقائي مع فرق زمني
+
+on:
+  schedule:
+    - cron: '0 */3 * * *'  # كل 3 ساعات تقريبًا
+  workflow_dispatch:  # للتشغيل اليدوي عند الحاجة
+  push:
+    paths:
+      - 'videos/**'
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: تثبيت المكتبات المطلوبة
+        run: |
+          pip install --upgrade pip
+          pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
+
+      # 4️⃣ إضافة تأخير عشوائي قبل تشغيل البوت
+      - name: تأخير عشوائي قبل التشغيل
+        run: |
+          echo "سيتم الانتظار مدة عشوائية قبل رفع الفيديو..."
+          # التأخير عشوائي بين -5 و +25 دقيقة
+          DELAY=$(( (RANDOM % 31) - 5 ))
+          if [ $DELAY -lt 0 ]; then
+            echo "تأخير $DELAY دقائق: سيتم التشغيل قبل الموعد"
+            sleep $((DELAY * -60))  # تحويل دقائق لثواني
+          else
+            echo "تأخير $DELAY دقائق: سيتم الانتظار"
+            sleep $((DELAY * 60))
+          fi
+
+      - name: تشغيل بوت رفع الفيديوهات
+        run: |
+          python upload_bot.py
