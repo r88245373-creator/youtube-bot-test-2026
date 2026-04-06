@@ -1,19 +1,20 @@
-name: رفع فيديوهات YouTube Shorts تلقائي مع فرق زمني
+name: YouTube Shorts Auto Upload
 
 on:
   schedule:
-    - cron: '0 */3 * * *'  # كل 3 ساعات تقريبًا
-  workflow_dispatch:  # للتشغيل اليدوي عند الحاجة
+    - cron: '0 */3 * * *'  # تشغيل كل 3 ساعات
+  workflow_dispatch:      # للتشغيل اليدوي
   push:
     paths:
-      - 'videos/**'
+      - 'videos/**'        # التشغيل عند إضافة فيديوهات جديدة
 
 jobs:
   upload:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -25,8 +26,9 @@ jobs:
           pip install --upgrade pip
           pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
-   
-
       - name: تشغيل بوت رفع الفيديوهات
-        run: |
-          python upload_bot.py
+        env:
+          # الكود كان يفشل لأن هذا السطر لم يكن موجوداً
+          # هذا يربط السكرت المخفي في جيتهاب بمتغير يراه البايثون
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: python upload_bot.py
