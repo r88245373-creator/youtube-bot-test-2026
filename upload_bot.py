@@ -14,9 +14,9 @@ SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 VIDEOS_FOLDER = "videos"
 
 def get_authenticated_service():
-    token_json_str = os.environ.get("TOKEN_JSON")
+    token_json_str = os.environ.get("YOUTUBE_TOKEN_JSON")
     if not token_json_str:
-        raise ValueError("❌ خطأ: TOKEN_JSON غير موجود في GitHub Secrets!")
+        raise ValueError("❌ خطأ: YOUTUBE_TOKEN_JSON غير موجود في GitHub Secrets!")
 
     creds_data = json.loads(token_json_str)
     creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
