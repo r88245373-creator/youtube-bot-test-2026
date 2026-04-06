@@ -1,6 +1,7 @@
 """
-Professional Arabic Story Video Generator - GITHUB ACTIONS OPTIMIZED
-Version: 2.5.0 - Ultimate Arabic Fix
+Professional Arabic Story Video Generator
+Author: Advanced Video Processing System
+Version: 2.2.0 - Final Arabic Fix (No Disconnected Letters)
 """
 
 import re
@@ -9,51 +10,68 @@ import numpy as np
 import os
 import random
 import logging
+import time
 import warnings
-import sys
 from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Any
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-# Suppress warnings
+# Suppress deprecation warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-# Robust Arabic Library Import
+# Import with error handling
 try:
     import arabic_reshaper
     from bidi.algorithm import get_display
-    ARABIC_SUPPORT = True
-except ImportError:
-    ARABIC_SUPPORT = False
+except ImportError as e:
+    print(f"Warning: Arabic text libraries not available: {e}")
+    def arabic_reshaper_placeholder(text): return text
+    def get_display_placeholder(text): return text
+    arabic_reshaper = type('obj', (object,), {'reshape': arabic_reshaper_placeholder})
+    get_display = get_display_placeholder
 
 from moviepy.editor import VideoFileClip, AudioFileClip
 
-# Logging Setup
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+# =============================
+# LOGGING CONFIGURATION
+# =============================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
+# =============================
+# CONFIGURATION CLASS
+# =============================
 @dataclass
 class VideoConfig:
     img_width: int = 1080
     img_height: int = 1920
     fps: int = 30
-    scroll_speed: int = 110 
-    font_size: int = 105
-    line_spacing: int = 55
-    horizontal_margin: int = 100
-    safe_zone_top: int = 200
-    safe_zone_bottom: int = 300
-    grain_intensity: float = 12.0
-    flicker_range: Tuple[float, float] = (0.95, 1.05)
-    vignette_intensity: float = 0.4
+    scroll_speed: int = 100 
+    font_size: int = 110
+    line_spacing: int = 50
+    horizontal_margin: int = 90
+    safe_zone_top: int = 160
+    safe_zone_bottom: int = 250
+    grain_intensity: float = 15.0
+    flicker_range: Tuple[float, float] = (0.92, 1.08)
+    vignette_intensity: float = 0.3
     backgrounds_folder: str = "backgrounds"
-    font_path: str = "Andalus.ttf" 
+    font_path: str = "Andalus.ttf"  # تأكد من مطابقة اسم الملف لديك
     output_video_path: str = "story_video_smooth.mp4"
     music_folder: str = "music"
     stories_file: str = "stories.txt"
     videos_folder: str = "videos"
+    
+    @property
+    def line_step(self) -> int:
+        return self.font_size + self.line_spacing
     
     @property
     def max_text_width(self) -> int:
@@ -63,48 +81,44 @@ class VideoGenerator:
     def __init__(self, config: VideoConfig):
         self.config = config
         self._setup_paths()
-        # إعداد محرك معالجة النصوص العربية مرة واحدة لتحسين الأداء
-        self.reshaper_config = {
-            'delete_harakat': False,
-            'support_ligatures': True,
-            'ARABIC_LIGATURES': True
-        }
-        self.reshaper = arabic_reshaper.ArabicReshaper(configuration=self.reshaper_config)
-
+        self._font_cache = {}
+        
     def _setup_paths(self):
-        for folder in [self.config.backgrounds_folder, self.config.music_folder, self.config.videos_folder]:
-            Path(folder).mkdir(exist_ok=True)
+        Path(self.config.backgrounds_folder).mkdir(exist_ok=True)
+        Path(self.config.music_folder).mkdir(exist_ok=True)
+        Path(self.config.videos_folder).mkdir(exist_ok=True)
         self.config.output_video_path = str(Path(self.config.videos_folder) / Path(self.config.output_video_path).name)
-
-    @lru_cache(maxsize=32)
-    def _get_font(self, size: int):
+        
+    @lru_cache(maxsize=128)
+    def _get_font(self, size: int) -> ImageFont.FreeTypeFont:
+        return ImageFont.truetype(self.config.font_path, size)
+    
+    @staticmethod
+    def fix_arabic(text: str) -> str:
+        """إصلاح النص العربي: ربط الحروف وتعديل الاتجاه من اليمين لليسار"""
         try:
-            return ImageFont.truetype(self.config.font_path, size)
+            if not text.strip():
+                return text
+            # ربط الحروف (Reshaping)
+            reshaped_text = arabic_reshaper.reshape(text)
+            # تصحيح الاتجاه (BiDi)
+            return get_display(reshaped_text)
         except Exception:
-            logger.error(f"Could not load font {self.config.font_path}, using default.")
-            return ImageFont.load_default()
-
-    def fix_arabic_logic(self, text: str) -> str:
-        """المعالج الاحترافي لربط الحروف العربية وتصحيح الاتجاه"""
-        if not text.strip() or not ARABIC_SUPPORT:
             return text
-        # 1. ربط الحروف (Reshaping)
-        reshaped = self.reshaper.reshape(text)
-        # 2. تصحيح الاتجاه (Bidi)
-        return get_display(reshaped)
-
-    def wrap_text_arabic(self, text: str, font, max_width: int) -> List[str]:
-        """تقسيم النص لأسطر مع مراعاة خصائص اللغة العربية"""
+    
+    def wrap_text(self, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> List[str]:
+        """تقسيم النص لأسطر مع قياس دقيق لعرض الحروف العربية المتصلة"""
         words = text.split()
         lines = []
         current_line = []
         
         for word in words:
             test_line = ' '.join(current_line + [word])
-            # يجب إصلاح النص قبل قياس عرضه لأن الربط يغير الحجم
-            fixed_test = self.fix_arabic_logic(test_line)
+            # يجب قياس عرض النص "بعد" إصلاحه ليطابق الواقع في الصورة
+            fixed_test = self.fix_arabic(test_line)
             
-            bbox = font.getbbox(fixed_test)
+            draw_temp = ImageDraw.Draw(Image.new('RGB', (1, 1)))
+            bbox = draw_temp.textbbox((0, 0), fixed_test, font=font)
             width = bbox[2] - bbox[0]
             
             if width <= max_width:
@@ -116,121 +130,136 @@ class VideoGenerator:
         
         if current_line:
             lines.append(' '.join(current_line))
+        
         return lines
-
-    def apply_visual_effects(self, frame_np: np.ndarray) -> np.ndarray:
-        """إضافة Grain و Flicker و Vignette لجمالية الفيديو"""
-        h, w = frame_np.shape[:2]
-        # Grain
-        noise = np.random.normal(0, self.config.grain_intensity, frame_np.shape).astype(np.float32)
-        frame_np = frame_np.astype(np.float32) + noise
-        # Flicker
-        frame_np *= random.uniform(*self.config.flicker_range)
-        # Vignette
-        X, Y = np.meshgrid(np.linspace(-1, 1, w), np.linspace(-1, 1, h))
-        vignette = 1 - self.config.vignette_intensity * (X**2 + Y**2)
-        frame_np *= np.clip(vignette[:, :, np.newaxis], 0.4, 1)
-        
-        return np.clip(frame_np, 0, 255).astype(np.uint8)
-
-    def add_music(self, video_path: str) -> str:
-        music_files = list(Path(self.config.music_folder).glob("*.mp3"))
-        if not music_files:
-            return video_path
-        
+    
+    def load_background(self) -> Image.Image:
+        bg_path = Path(self.config.backgrounds_folder)
+        if bg_path.exists() and any(bg_path.iterdir()):
+            bg_files = [f for f in bg_path.glob('*') if f.suffix.lower() in ('.png', '.jpg', '.jpeg')]
+            if bg_files:
+                chosen = random.choice(bg_files)
+                img = Image.open(chosen).convert("RGB")
+                return img.resize((self.config.img_width, self.config.img_height))
+        return Image.new('RGB', (self.config.img_width, self.config.img_height), (0, 0, 0))
+    
+    def apply_effects(self, frame: Image.Image) -> Image.Image:
+        img_np = np.array(frame).astype(np.float32)
+        if self.config.grain_intensity > 0:
+            noise = np.random.normal(0, self.config.grain_intensity, img_np.shape)
+            img_np += noise
+        flicker = random.uniform(*self.config.flicker_range)
+        img_np *= flicker
+        if self.config.vignette_intensity > 0:
+            h, w = img_np.shape[:2]
+            X, Y = np.meshgrid(np.linspace(-1, 1, w), np.linspace(-1, 1, h))
+            vignette = 1 - self.config.vignette_intensity * (X**2 + Y**2)
+            vignette = np.clip(vignette, 0.5, 1)
+            img_np = img_np * vignette[:, :, np.newaxis]
+        img_np = np.clip(img_np, 0, 255).astype(np.uint8)
+        return Image.fromarray(img_np)
+    
+    def get_next_story(self) -> Optional[str]:
+        story_path = Path(self.config.stories_file)
+        if not story_path.exists(): return None
         try:
-            logger.info(f"Adding audio from: {random.choice(music_files).name}")
+            with open(story_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            stories = [p.strip() for p in content.split("++") if p.strip()]
+            if not stories: return None
+            selected = stories[0]
+            remaining = stories[1:]
+            with open(story_path, "w", encoding="utf-8") as f:
+                if remaining: f.write("\n\n++\n\n".join(remaining) + "\n\n++")
+                else: f.write("")
+            return selected
+        except Exception: return None
+    
+    def add_music(self, video_path: str) -> str:
+        music_dir = Path(self.config.music_folder)
+        music_files = list(music_dir.glob("*.mp3")) + list(music_dir.glob("*.wav"))
+        if not music_files: return video_path
+        selected = random.choice(music_files)
+        try:
             video = VideoFileClip(video_path)
-            audio = AudioFileClip(str(random.choice(music_files)))
-            
+            audio = AudioFileClip(str(selected))
             if audio.duration < video.duration:
                 audio = audio.loop(duration=video.duration)
-            
-            final_audio = audio.subclip(0, video.duration).volumex(0.4)
+            final_audio = audio.subclip(0, video.duration).volumex(0.5)
             final_video = video.set_audio(final_audio)
-            
             output_path = str(Path(self.config.videos_folder) / "final_output_with_music.mp4")
-            final_video.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=self.config.fps, logger=None)
+            final_video.write_videofile(output_path, codec="libx264", audio_codec="aac", verbose=False, logger=None)
+            video.close()
+            audio.close()
             return output_path
-        except Exception as e:
-            logger.error(f"Music Error: {e}")
-            return video_path
-
-    def create_video(self, story_text: str) -> str:
+        except Exception: return video_path
+    
+    def create_video(self, text: str) -> str:
+        logger.info("Starting video creation...")
+        sentences = [s.strip() for s in text.split("\n") if s.strip()]
         font = self._get_font(self.config.font_size)
-        raw_lines = []
-        for p in story_text.split('\n'):
-            if p.strip():
-                raw_lines.extend(self.wrap_text_arabic(p, font, self.config.max_text_width))
         
-        # تحويل الأسطر لشكلها النهائي المربوط
-        processed_lines = [self.fix_arabic_logic(line) for line in raw_lines]
+        all_lines = []
+        for sentence in sentences:
+            wrapped = self.wrap_text(sentence, font, self.config.max_text_width)
+            # تخزين الأسطر جاهزة للعرض النهائي
+            all_lines.extend([self.fix_arabic(line) for line in wrapped])
         
-        line_step = self.config.font_size + self.config.line_spacing
-        total_height = len(processed_lines) * line_step
-        duration = (total_height + self.config.img_height) / self.config.scroll_speed
-        total_frames = int(duration * self.config.fps)
-
-        # تجهيز الفيديو
+        if not all_lines: return ""
+        
+        start_y = self.config.img_height - self.config.safe_zone_bottom
+        end_y = self.config.safe_zone_top - self.config.line_step
+        total_distance = start_y - end_y + (len(all_lines) * self.config.line_step)
+        total_duration = total_distance / self.config.scroll_speed
+        total_frames = int(self.config.fps * total_duration)
+        
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(self.config.output_video_path, fourcc, self.config.fps, (self.config.img_width, self.config.img_height))
+        video_writer = cv2.VideoWriter(self.config.output_video_path, fourcc, self.config.fps, (self.config.img_width, self.config.img_height))
+        background = self.load_background()
+        line_positions = [start_y + (i * self.config.line_step) for i in range(len(all_lines))]
+        scroll_per_frame = self.config.scroll_speed / self.config.fps
         
-        # تحميل الخلفية
-        bg = Image.new('RGB', (self.config.img_width, self.config.img_height), (15, 15, 15))
-        bg_folder = Path(self.config.backgrounds_folder)
-        bg_files = list(bg_folder.glob("*.jpg")) + list(bg_folder.glob("*.png"))
-        if bg_files:
-            bg = Image.open(random.choice(bg_files)).convert("RGB").resize((self.config.img_width, self.config.img_height))
-
-        logger.info(f"Generating {total_frames} frames...")
-        
-        for f in range(total_frames):
-            frame = bg.copy()
+        for frame_num in range(total_frames):
+            frame = background.copy()
             draw = ImageDraw.Draw(frame)
-            y_offset = self.config.img_height - (f * (self.config.scroll_speed / self.config.fps))
+            scroll_offset = scroll_per_frame * frame_num
             
-            for i, line in enumerate(processed_lines):
-                current_y = y_offset + (i * line_step)
-                if -100 < current_y < self.config.img_height + 100:
-                    bbox = font.getbbox(line)
-                    x_pos = (self.config.img_width - (bbox[2] - bbox[0])) // 2
-                    # رسم ظل خفيف للنص لزيادة الوضوح
-                    draw.text((x_pos+2, current_y+2), line, font=font, fill=(0,0,0,180))
-                    draw.text((x_pos, current_y), line, font=font, fill="white")
-
-            # تحويل لـ OpenCV وتطبيق المؤثرات
-            frame_np = cv2.cvtColor(np.array(frame), cv2.COLOR_RGB2BGR)
-            frame_np = self.apply_visual_effects(frame_np)
-            out.write(frame_np)
-
-        out.release()
+            for line_text, original_y in zip(all_lines, line_positions):
+                y_pos = original_y - scroll_offset
+                if (y_pos < self.config.safe_zone_top - self.config.line_step or y_pos > self.config.img_height - self.config.safe_zone_bottom):
+                    continue
+                
+                bbox = draw.textbbox((0, 0), line_text, font=font)
+                text_width = bbox[2] - bbox[0]
+                x_pos = (self.config.img_width - text_width) // 2
+                # رسم النص مع حدود سوداء لزيادة الوضوح
+                draw.text((x_pos, y_pos), line_text, font=font, fill="white", stroke_width=3, stroke_fill="black")
+            
+            frame = self.apply_effects(frame)
+            frame_cv = cv2.cvtColor(np.array(frame), cv2.COLOR_RGB2BGR)
+            video_writer.write(frame_cv)
+        
+        video_writer.release()
         return self.config.output_video_path
+    
+    def run(self) -> str:
+        story = self.get_next_story()
+        if not story: return ""
+        video_path = self.create_video(story)
+        if not video_path: return ""
+        return self.add_music(video_path)
 
-    def run(self):
-        story_path = Path(self.config.stories_file)
-        if not story_path.exists():
-            logger.error("Stories file missing!")
+def main():
+    try:
+        config = VideoConfig()
+        if not Path(config.font_path).exists():
+            logger.error(f"CRITICAL ERROR: Font file not found at {config.font_path}.")
             return
-            
-        with open(story_path, 'r', encoding='utf-8') as f:
-            content = f.read().split('++')
-        
-        stories = [s.strip() for s in content if s.strip()]
-        if not stories:
-            logger.info("No stories to process.")
-            return
-
-        selected_story = stories[0]
-        video_file = self.create_video(selected_story)
-        final_file = self.add_music(video_file)
-        
-        # تحديث ملف القصص (حذف التي تم معالجتها)
-        with open(story_path, 'w', encoding='utf-8') as f:
-            f.write('\n\n++\n\n'.join(stories[1:]))
-            if len(stories) > 1: f.write('\n\n++')
-            
-        logger.info(f"Successfully created: {final_file}")
+        generator = VideoGenerator(config)
+        result = generator.run()
+        if result: logger.info(f"🎬 Done: {result}")
+    except Exception as e:
+        logger.error(f"❌ Unexpected Error: {e}", exc_info=True)
 
 if __name__ == "__main__":
-    gen = VideoGenerator(VideoConfig())
-    gen.run()
+    main()
