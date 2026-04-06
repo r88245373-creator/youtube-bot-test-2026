@@ -2,24 +2,22 @@ name: YouTube Shorts Auto Upload
 
 on:
   schedule:
-    # Runs every 3 hours with random minute offset to avoid detection
     - cron: '*/3 * * * *'
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
   push:
     paths:
       - 'videos/**'
-      - 'shorts_factory.py'  # Trigger when creator script changes
-      - 'upload_bot.py'      # Trigger when upload script changes
-      - 'requirements.txt'   # Trigger when dependencies change
+      - 'shorts_factory.py'
+      - 'upload_bot.py'
+      - 'requirements.txt'
 
 jobs:
   create-and-upload:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     
-    # Environment variables
     env:
-      PYTHONUNBUFFERED: 1  # Real-time Python output
+      PYTHONUNBUFFERED: 1
 
     steps:
       # ============================================
@@ -28,7 +26,7 @@ jobs:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1  # Faster clone for CI/CD
+          fetch-depth: 1
 
       # ============================================
       # 2. SETUP PYTHON ENVIRONMENT
@@ -41,49 +39,92 @@ jobs:
           cache-dependency-path: 'requirements.txt'
 
       # ============================================
-      # 3. INSTALL DEPENDENCIES (Using requirements.txt)
+      # 3. INSTALL DEPENDENCIES (Fixed)
       # ============================================
       - name: 📦 Install Dependencies
         run: |
+          # Upgrade pip and install setuptools first (critical for pkg_resources)
           python -m pip install --upgrade pip setuptools wheel
-          pip install -r requirements.txt
-          pip install --upgrade google-api-python-client google-auth-oauthlib
           
-          # Verify installations
+          # Install all requirements
+          pip install -r requirements.txt
+          
+          # Force reinstall imageio-ffmpeg with dependencies
+          pip install --upgrade --force-reinstall imageio-ffmpeg
+          
+          # Verify critical imports
+          python -c "import pkg_resources; print('✅ pkg_resources available')"
           python -c "import cv2; print(f'✅ OpenCV: {cv2.__version__}')"
           python -c "import numpy; print(f'✅ NumPy: {numpy.__version__}')"
           python -c "import PIL; print(f'✅ Pillow: {PIL.__version__}')"
-          python -c "import moviepy; print(f'✅ MoviePy: {moviepy.__version__}')"
-          python -c "import googleapiclient; print(f'✅ Google API Client: OK')"
+          python -c "from moviepy.editor import VideoFileClip; print(f'✅ MoviePy: OK')"
+          python -c "import arabic_reshaper; print('✅ Arabic Reshaper: OK')"
+          python -c "from bidi.algorithm import get_display; print('✅ Python-Bidi: OK')"
 
       # ============================================
-     
-      # 5. CREATE VIDEO (Run shorts factory)
+      # 4. INSTALL FFMPEG (Required for moviepy)
+      # ============================================
+      - name: 🎬 Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version | head -n 1
+
+      # ============================================
+      # 5. RANDOM DELAY
+      # ============================================
+      - name: ⏱️ Apply Random Delay
+        run: |
+          DELAY=$(( (RANDOM % 16) + 5 ))
+          echo "🕒 Waiting for $DELAY minutes..."
+          sleep $((DELAY * 60))
+          echo "✅ Delay completed"
+
+      # ============================================
+      # 6. CREATE VIDEO
       # ============================================
       - name: 🎬 Generate Shorts Video
         run: |
           echo "🎬 Starting video generation at $(date)"
           
+          # Debug: Show current directory structure
+          echo "📁 Current directory structure:"
+          ls -la
+          
+          # Check required files
+          if [ ! -f "shorts_factory.py" ]; then
+            echo "❌ shorts_factory.py not found!"
+            exit 1
+          fi
+          
+          if [ ! -f "stories.txt" ]; then
+            echo "❌ stories.txt not found!"
+            exit 1
+          fi
+          
+          if [ ! -f "andalus.ttf" ]; then
+            echo "⚠️ Warning: andalus.ttf not found, using default font"
+          fi
+          
           # Run the video creator
-          if python shorts_factory.py; then
+          python shorts_factory.py
+          
+          if [ $? -eq 0 ]; then
             echo "✅ Video generation completed successfully"
-            
-            # List generated videos
             echo "📁 Generated videos:"
-            ls -lah videos/ || echo "No videos found in videos/"
+            ls -lah videos/ || echo "No videos found"
           else
-            echo "❌ Video generation failed"
+            echo "❌ Video generation failed with exit code $?"
             exit 1
           fi
 
       # ============================================
-      # 6. UPLOAD TO YOUTUBE
+      # 7. UPLOAD TO YOUTUBE
       # ============================================
       - name: 🚀 Upload to YouTube Shorts
         env:
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
         run: |
-          # Verify token exists
           if [ -z "$YOUTUBE_TOKEN_JSON" ]; then
             echo "❌ YOUTUBE_TOKEN_JSON secret is missing"
             exit 1
@@ -91,7 +132,6 @@ jobs:
           
           echo "📤 Starting upload process at $(date)"
           
-          # Run upload bot
           if python upload_bot.py; then
             echo "✅ Upload completed successfully"
           else
@@ -100,33 +140,26 @@ jobs:
           fi
 
       # ============================================
-      # 7. CLEANUP (Safe deletion with .gitkeep)
+      # 8. CLEANUP
       # ============================================
       - name: 🧹 Cleanup Video Directory
-        if: always()  # Always run even if previous steps fail
+        if: always()
         run: |
           echo "🧹 Cleaning up video directory..."
           
-          # Safe deletion of video files
           if [ -d "videos" ]; then
-            # Delete only video files, keep .gitkeep
             find videos/ -type f -name "*.mp4" -delete
             find videos/ -type f -name "*.avi" -delete
             find videos/ -type f -name "*.mov" -delete
             find videos/ -type f -name "*.mkv" -delete
-            
-            # Ensure .gitkeep exists
             touch videos/.gitkeep
-            
             echo "✅ Cleanup completed"
-            echo "📁 Remaining files:"
-            ls -la videos/
           else
-            echo "⚠️ Videos directory not found, skipping cleanup"
+            echo "⚠️ Videos directory not found"
           fi
 
       # ============================================
-      # 8. SUCCESS NOTIFICATION (Optional)
+      # 9. SUCCESS NOTIFICATION
       # ============================================
       - name: ✅ Success Notification
         if: success()
@@ -135,7 +168,7 @@ jobs:
           echo "📊 Workflow URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       # ============================================
-      # 9. FAILURE NOTIFICATION
+      # 10. FAILURE NOTIFICATION
       # ============================================
       - name: 📧 Failure Notification
         if: failure()
@@ -145,26 +178,3 @@ jobs:
           echo "📝 Repository: ${{ github.repository }}"
           echo "🌿 Branch: ${{ github.ref_name }}"
           echo "📊 Logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo ""
-          echo "💡 Common fixes:"
-          echo "  1. Check secrets.YOUTUBE_TOKEN_JSON is valid"
-          echo "  2. Verify stories.txt has content"
-          echo "  3. Check backgrounds/ folder has images"
-          echo "  4. Verify andalus.ttf font exists"
-          echo "  5. Check disk space with: df -h"
-
-      # ============================================
-      # 10. DISK CLEANUP (Optional)
-      # ============================================
-      - name: 🗑️ Free Disk Space
-        if: always()
-        run: |
-          # Clean up pip cache
-          pip cache purge || true
-          
-          # Clean up temporary files
-          rm -rf /tmp/* || true
-          
-          # Show disk usage
-          echo "💾 Disk usage after cleanup:"
-          df -h
