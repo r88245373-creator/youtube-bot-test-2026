@@ -2,11 +2,10 @@ name: YouTube Shorts Auto Upload
 
 on:
   schedule:
-    - cron: '*/3 * * * *'
+    - cron: '0 */4 * * *' # تم تغييره ليعمل كل ساعتين (أكثر استقراراً من كل 3 دقائق لتجنب حظر يوتيوب)
   workflow_dispatch:
   push:
     paths:
-      - 'videos/**'
       - 'shorts_factory.py'
       - 'upload_bot.py'
       - 'requirements.txt'
@@ -32,60 +31,37 @@ jobs:
           cache: 'pip'
           cache-dependency-path: 'requirements.txt'
 
-      - name: 📦 Install Dependencies (Fixed pkg_resources)
-        run: |
-          # Upgrade pip first
-          python -m pip install --upgrade pip
-          
-          # CRITICAL: Install setuptools BEFORE any other package
-          # This ensures pkg_resources is available
-          pip install --no-cache-dir setuptools==69.5.1
-          
-          # Verify pkg_resources works immediately
-          python -c "import pkg_resources; print('✅ pkg_resources loaded successfully')"
-          
-          # Install all other requirements
-          pip install --no-cache-dir -r requirements.txt
-          
-          # Fix imageio-ffmpeg - keep the working version
-          pip install --no-cache-dir --force-reinstall imageio-ffmpeg==0.4.9
-          
-          # Prevent future setuptools upgrades
-          pip install --no-cache-dir --upgrade --force-reinstall setuptools==69.5.1
-          
-          # Final verification
-          echo "=== VERIFYING ALL IMPORTS ==="
-          python -c "import pkg_resources; print('✅ pkg_resources')"
-          python -c "import cv2; print(f'✅ OpenCV: {cv2.__version__}')"
-          python -c "import numpy; print(f'✅ NumPy: {numpy.__version__}')"
-          python -c "import PIL; print(f'✅ Pillow: {PIL.__version__}')"
-          python -c "import moviepy; print('✅ MoviePy')"
-          python -c "import arabic_reshaper; print('✅ Arabic Reshaper')"
-          python -c "from bidi.algorithm import get_display; print('✅ Python-Bidi')"
-          python -c "import imageio_ffmpeg; print('✅ imageio-ffmpeg')"
-          echo "=== ALL VERIFICATIONS PASSED ==="
-
-      - name: 🎬 Install FFmpeg
+      - name: 🏗️ Install System Dependencies (Arabic Fix)
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          # تثبيت مكتبات الخطوط الأساسية لنظام لينكس لدعم العربية
+          sudo apt-get install -y ffmpeg libpango-1.0-0 libharfbuzz0b libpangoft2-1.0-0 fonts-noto-core fonts-noto-ui-core
+
+      - name: 📦 Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir setuptools==69.5.1
+          pip install --no-cache-dir -r requirements.txt
+          # تثبيت إضافي لضمان عمل المعالج العربي
+          pip install --no-cache-dir arabic-reshaper python-bidi fonttools
+
+      - name: 🎬 Verify Environment
+        run: |
+          echo "=== VERIFYING SYSTEM ==="
+          python -c "import arabic_reshaper; from bidi.algorithm import get_display; print('✅ Arabic Text Logic: OK')"
           ffmpeg -version | head -n 1
+          echo "=== CHECKING FONT FILE ==="
+          # سيقوم هذا السطر بالتأكد من وجود ملف الخط في المجلد
+          ls Andalus.ttf || echo "⚠️ Warning: Andalus.ttf not found in root!"
 
       - name: 🎬 Generate Shorts Video
         run: |
           echo "🎬 Starting video generation at $(date)"
-          
-          # Debug installed packages
-          echo "📦 Installed packages:"
-          pip list | grep -E "(setuptools|imageio|moviepy|pkg_resources)"
-          
-          # Run the video creator
           python shorts_factory.py
           
           if [ $? -eq 0 ]; then
             echo "✅ Video generation completed successfully"
-            echo "📁 Generated videos:"
-            ls -lah videos/ || echo "No videos found"
+            ls -lah videos/
           else
             echo "❌ Video generation failed"
             exit 1
@@ -99,40 +75,10 @@ jobs:
             echo "❌ YOUTUBE_TOKEN_JSON secret is missing"
             exit 1
           fi
-          
-          echo "📤 Starting upload process at $(date)"
-          
-          if python upload_bot.py; then
-            echo "✅ Upload completed successfully"
-          else
-            echo "❌ Upload failed"
-            exit 1
-          fi
+          python upload_bot.py
 
-      - name: 🧹 Cleanup Video Directory
+      - name: 🧹 Cleanup
         if: always()
         run: |
-          echo "🧹 Cleaning up video directory..."
-          
-          if [ -d "videos" ]; then
-            # Keep only the most recent video if needed, delete others
-            find videos/ -type f -name "*.mp4" -not -name ".*" -delete
-            find videos/ -type f -name "*.avi" -delete
-            find videos/ -type f -name "*.mov" -delete
-            find videos/ -type f -name "*.mkv" -delete
-            touch videos/.gitkeep
-            echo "✅ Cleanup completed"
-          else
-            echo "⚠️ Videos directory not found"
-          fi
-
-      - name: ✅ Success Notification
-        if: success()
-        run: |
-          echo "🎉 Workflow completed successfully at $(date)"
-
-      - name: 📧 Failure Notification
-        if: failure()
-        run: |
-          echo "❌ Workflow failed at $(date)"
-          echo "📊 Logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          find videos/ -type f -name "*.mp4" -delete
+          touch videos/.gitkeep
