@@ -71,16 +71,6 @@ jobs:
           ffmpeg -version | head -n 1
 
       # ============================================
-      # 5. RANDOM DELAY
-      # ============================================
-      - name: ⏱️ Apply Random Delay
-        run: |
-          DELAY=$(( (RANDOM % 16) + 5 ))
-          echo "🕒 Waiting for $DELAY minutes..."
-          sleep $((DELAY * 60))
-          echo "✅ Delay completed"
-
-      # ============================================
       # 6. CREATE VIDEO
       # ============================================
       - name: 🎬 Generate Shorts Video
