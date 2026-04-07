@@ -1,19 +1,19 @@
-# Core dependencies
+# Core YouTube API
 google-api-python-client==2.108.0
 google-auth-httplib2==0.1.1
 google-auth-oauthlib==1.1.0
 
-# Video processing
-opencv-python==4.8.1.78
+# Video Processing
+opencv-python==4.9.0.80
 moviepy==1.0.3
-numpy==1.24.3
+numpy==1.26.3
 
-# Image & text
-Pillow==10.1.0
+# Image & Text
+Pillow==10.2.0
 arabic-reshaper==3.0.0
 python-bidi==0.4.2
 
-# Utilities
-tqdm==4.66.1
+# Utils
+tqdm==4.66.2
 tenacity==8.2.3
-python-dotenv==1.0.0
+python-dotenv==1.0.1
