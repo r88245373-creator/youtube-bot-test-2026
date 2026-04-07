@@ -20,7 +20,6 @@ try:
 except:
     def fix_ar(text): return text
 
-
 # ================= CONFIG =================
 WIDTH, HEIGHT = 1080, 1920
 FPS = 30
@@ -38,14 +37,12 @@ OUTPUT = "videos"
 
 Path(OUTPUT).mkdir(exist_ok=True)
 
-
 # ================= HELPERS =================
 def get_font():
     try:
         return ImageFont.truetype(FONT_PATH, FONT_SIZE)
     except:
         return ImageFont.load_default()
-
 
 def get_background():
     files = list(Path(BG_FOLDER).glob("*"))
@@ -60,7 +57,6 @@ def get_background():
         c = int(20 * (1 - y / HEIGHT))
         draw.line([(0, y), (WIDTH, y)], fill=(c, c, c+30))
     return img
-
 
 def wrap_text(text, font):
     words = text.split()
@@ -83,7 +79,6 @@ def wrap_text(text, font):
         lines.append(" ".join(current))
 
     return [fix_ar(l) for l in lines]
-
 
 # ================= CORE =================
 def create_video(story_text):
@@ -123,7 +118,7 @@ def create_video(story_text):
 
             draw.text(
                 (x, y),
-                line,
+                fix_ar(line),  # ✅ نص عربي مضبوط RTL
                 font=font,
                 fill="white",
                 stroke_width=3,
@@ -170,30 +165,22 @@ def get_next_story(file_path="stories.txt"):
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # إيجاد أول فاصل ++
     separator = "++"
     index = content.find(separator)
 
     if index == -1:
-        # حالة وجود قصة واحدة فقط بدون ++
         story = content.strip()
-        # تفريغ الملف
         open(file_path, "w", encoding="utf-8").close()
         return story if story else None
 
-    # استخراج أول قصة فقط
     story = content[:index].strip()
-
-    # الباقي بعد أول ++
     remaining = content[index + len(separator):].strip()
 
-    # حفظ الباقي كما هو (بدون تخريب التنسيق)
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(remaining)
 
     return story
 
-# ================= RUN =================
 # ================= RUN =================
 if __name__ == "__main__":
 
