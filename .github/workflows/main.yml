@@ -25,13 +25,7 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Step 4: Create YouTube credentials
-      - name: 🔑 Setup YouTube Token
-        env:
-          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
-        run: |
-          echo "$YOUTUBE_TOKEN_JSON" > client_secret.json
-          echo "✅ Credentials configured"
+      # Step 4: 
 
       # Step 5: Generate Short video
       - name: 🎬 Generate Short Video
@@ -42,6 +36,9 @@ jobs:
 
       # Step 6: Upload to YouTube
       - name: 📤 Upload to YouTube
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+		  
         run: |
           echo "🚀 Uploading Short..."
           python upload_bot.py
