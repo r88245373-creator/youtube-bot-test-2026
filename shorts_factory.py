@@ -156,38 +156,52 @@ def create_video(story_text):
     )
 
     return output_path
+# =================  =================
+import re
 
-def get_next_story(file_path="stories.txt"):
+def get_next_story(file_path="stories.txt", index_file="index.txt"):
     if not os.path.exists(file_path) or os.stat(file_path).st_size == 0:
         print("❌ الملف غير موجود أو فارغ")
         return None
 
+    # قراءة الملف
     with open(file_path, "r", encoding="utf-8") as f:
-        # قراءة جميع الأسطر لتجنب مشاكل الذاكرة مع الملفات الكبيرة
-        content = f.read().strip()
+        content = f.read().replace("\ufeff", "").strip()
 
     if not content:
         return None
 
-    separator = "++"
-    
-    # التحقق من وجود الفاصل
-    if separator in content:
-        # تقسيم النص إلى أول قصة والباقي
-        parts = content.split(separator, 1) # تقسيم مرة واحدة فقط عند أول فاصل
-        story = parts[0].strip()
-        remaining = parts[1].strip()
-    else:
-        # إذا لم يوجد فاصل، نأخذ المحتوى كله كقصة واحدة
-        story = content
-        remaining = ""
+    # تقسيم القصص (ذكي ويتحمل أي تنسيق)
+    stories = re.split(r"\n*\+\+\n*", content)
+    stories = [s.strip() for s in stories if s.strip()]
 
-    # إعادة كتابة الملف بالقصص المتبقية فقط (هنا يحدث القطع)
-    with open(file_path, "w", encoding="utf-8") as f:
-        f.write(remaining)
+    if not stories:
+        return None
+
+    # قراءة index
+    if os.path.exists(index_file):
+        with open(index_file, "r") as f:
+            try:
+                idx = int(f.read().strip())
+            except:
+                idx = 0
+    else:
+        idx = 0
+
+    # إذا انتهت القصص
+    if idx >= len(stories):
+        print("✅ انتهت جميع القصص")
+        return None
+
+    story = stories[idx]
+
+    # تحديث index
+    with open(index_file, "w") as f:
+        f.write(str(idx + 1))
+
+    print(f"📖 Story #{idx + 1}")
 
     return story
-
 # ================= RUN =================
 if __name__ == "__main__":
 
