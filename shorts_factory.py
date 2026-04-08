@@ -158,24 +158,31 @@ def create_video(story_text):
     return output_path
 
 def get_next_story(file_path="stories.txt"):
-    if not os.path.exists(file_path):
-        print("❌ الملف غير موجود")
+    if not os.path.exists(file_path) or os.stat(file_path).st_size == 0:
+        print("❌ الملف غير موجود أو فارغ")
         return None
 
     with open(file_path, "r", encoding="utf-8") as f:
-        content = f.read()
+        # قراءة جميع الأسطر لتجنب مشاكل الذاكرة مع الملفات الكبيرة
+        content = f.read().strip()
+
+    if not content:
+        return None
 
     separator = "++"
-    index = content.find(separator)
+    
+    # التحقق من وجود الفاصل
+    if separator in content:
+        # تقسيم النص إلى أول قصة والباقي
+        parts = content.split(separator, 1) # تقسيم مرة واحدة فقط عند أول فاصل
+        story = parts[0].strip()
+        remaining = parts[1].strip()
+    else:
+        # إذا لم يوجد فاصل، نأخذ المحتوى كله كقصة واحدة
+        story = content
+        remaining = ""
 
-    if index == -1:
-        story = content.strip()
-        open(file_path, "w", encoding="utf-8").close()
-        return story if story else None
-
-    story = content[:index].strip()
-    remaining = content[index + len(separator):].strip()
-
+    # إعادة كتابة الملف بالقصص المتبقية فقط (هنا يحدث القطع)
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(remaining)
 
